@@ -457,14 +457,17 @@ public class MyHashMap<K, V> extends AbstractMap<K, V>
      *                                  or the load factor is nonpositive
      */
     public MyHashMap(int initialCapacity, float loadFactor) {
-        if (initialCapacity < 0)
+        if (initialCapacity < 0) {
             throw new IllegalArgumentException("Illegal initial capacity: " +
                     initialCapacity);
-        if (initialCapacity > MAXIMUM_CAPACITY)
+        }
+        if (initialCapacity > MAXIMUM_CAPACITY) {
             initialCapacity = MAXIMUM_CAPACITY;
-        if (loadFactor <= 0 || Float.isNaN(loadFactor))
+        }
+        if (loadFactor <= 0 || Float.isNaN(loadFactor)) {
             throw new IllegalArgumentException("Illegal load factor: " +
                     loadFactor);
+        }
         this.loadFactor = loadFactor;
         this.threshold = tableSizeFor(initialCapacity);
     }
@@ -664,19 +667,20 @@ public class MyHashMap<K, V> extends AbstractMap<K, V>
                 // 如果两个key的hash一样，值也一样，那么就替换value呗
                 newNode = tabNode;
             } else if (tabNode instanceof TreeNode) {
-                // 如果是个treeNode,直接加了
+                // 如果是个treeNode(双向),直接加了，这里边是给树加元素
                 newNode = ((TreeNode<K, V>) tabNode).putTreeVal(this, tab, hash, key, value);
             } else {
-                // 这边用来处理链表
+                // 这边用来处理链表，遍历节点
                 for (int binCount = 0; ; ++binCount) {
                     if ((newNode = tabNode.next) == null) {
                         tabNode.next = newNode(hash, key, value, null);
-                        // -1 for 1st
+                        // -1 for 1st  这里面就是大于 TREEIFY_THRESHOLD = 8 转换为树了
                         if (binCount >= TREEIFY_THRESHOLD - 1) {
                             treeifyBin(tab, hash);
                         }
                         break;
                     }
+                    // 有相等元素，就直接出去了
                     if (newNode.hash == hash &&
                             ((k = newNode.key) == key || (key != null && key.equals(k)))) {
                         break;
@@ -684,23 +688,25 @@ public class MyHashMap<K, V> extends AbstractMap<K, V>
                     tabNode = newNode;
                 }
             }
-            if (newNode != null) { // existing mapping for key
+            // existing mapping for key
+            if (newNode != null) {
                 V oldValue = newNode.value;
                 if (!onlyIfAbsent || oldValue == null) {
                     newNode.value = value;
                 }
+                // 将节点移动到最后，jdk8用的尾插法
                 afterNodeAccess(newNode);
                 return oldValue;
             }
         }
-        // 这个是用来做序列化判断的，不用管
+        // 修改次数
         ++modCount;
         // 插入新元素后，元素的数量是否大于 容量*负载因子
         if (++size > threshold) {
             // 扩容
             resize();
         }
-        // 这边会调用linkedHashMap中的方法
+        // 是否需要把最后一个元素删掉
         afterNodeInsertion(evict);
         return null;
     }
@@ -721,14 +727,16 @@ public class MyHashMap<K, V> extends AbstractMap<K, V>
         int newCap, newThr = 0;
         if (oldCap > 0) {
             if (oldCap >= MAXIMUM_CAPACITY) {
+                // 容量已经最大了，只能把阈值也调整到最大，不管什么负载因子了
                 threshold = Integer.MAX_VALUE;
                 return oldTab;
-            } else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY &&
-                    oldCap >= DEFAULT_INITIAL_CAPACITY) {
-                newThr = oldThr << 1; // double threshold
+            } else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY && oldCap >= DEFAULT_INITIAL_CAPACITY) {
+                // 左移1位 double threshold
+                newThr = oldThr << 1;
             }
-        } else if (oldThr > 0) // initial capacity was placed in threshold
-        {
+        } else if (oldThr > 0) {
+            // 原来的容量<= 0 阈值>0
+            // initial capacity was placed in threshold
             newCap = oldThr;
         } else {               // zero initial threshold signifies using defaults
             newCap = DEFAULT_INITIAL_CAPACITY;
@@ -736,43 +744,52 @@ public class MyHashMap<K, V> extends AbstractMap<K, V>
         }
         if (newThr == 0) {
             float ft = (float) newCap * loadFactor;
-            newThr = (newCap < MAXIMUM_CAPACITY && ft < (float) MAXIMUM_CAPACITY ?
-                    (int) ft : Integer.MAX_VALUE);
+            newThr = (newCap < MAXIMUM_CAPACITY && ft < (float) MAXIMUM_CAPACITY ? (int) ft : Integer.MAX_VALUE);
         }
         threshold = newThr;
-        @SuppressWarnings({"rawtypes", "unchecked"})
+        @SuppressWarnings({"unchecked"})
         Node<K, V>[] newTab = (Node<K, V>[]) new Node[newCap];
         table = newTab;
         if (oldTab != null) {
+            // 遍历老数组下标
             for (int j = 0; j < oldCap; ++j) {
-                Node<K, V> e;
-                if ((e = oldTab[j]) != null) {
+                Node<K, V> node = oldTab[j];
+                if (node != null) {
                     oldTab[j] = null;
-                    if (e.next != null) {
-                        if (e instanceof TreeNode) {
-                            ((TreeNode<K, V>) e).split(this, newTab, j, oldCap);
+                    // 元素不为空，扩容时需要处理
+                    if (node.next != null) {
+                        if (node instanceof TreeNode) {
+                            // 如果是树节点，由这哥split来处理
+                            ((TreeNode<K, V>) node).split(this, newTab, j, oldCap);
                         } else { // preserve order
+                            // 是链表这边处理
+                            // 老索引处链表，头、尾
                             Node<K, V> loHead = null, loTail = null;
+                            // 新索引处链表，头、尾
                             Node<K, V> hiHead = null, hiTail = null;
                             Node<K, V> next;
+                            // 循环处理数组索引j位置上哈希冲突的链表中每个元素
                             do {
-                                next = e.next;
-                                if ((e.hash & oldCap) == 0) {
+                                next = node.next;
+                                // 判断key的hash值与老数组长度与操作后结果决定元素是放在原索引处还是新索引
+                                if ((node.hash & oldCap) == 0) {
+                                    // 放在原索引处 建立新链表
                                     if (loTail == null) {
-                                        loHead = e;
+                                        loHead = node;
                                     } else {
-                                        loTail.next = e;
+                                        loTail.next = node;
                                     }
-                                    loTail = e;
+                                    loTail = node;
                                 } else {
+                                    // 在新索引处，建立新链表
                                     if (hiTail == null) {
-                                        hiHead = e;
+                                        hiHead = node;
                                     } else {
-                                        hiTail.next = e;
+                                        hiTail.next = node;
                                     }
-                                    hiTail = e;
+                                    hiTail = node;
                                 }
-                            } while ((e = next) != null);
+                            } while ((node = next) != null);
                             if (loTail != null) {
                                 loTail.next = null;
                                 newTab[j] = loHead;
@@ -783,7 +800,8 @@ public class MyHashMap<K, V> extends AbstractMap<K, V>
                             }
                         }
                     } else {
-                        newTab[e.hash & (newCap - 1)] = e;
+                        // 不是链表，就把hash和新长度与一下，算出新下标
+                        newTab[node.hash & (newCap - 1)] = node;
                     }
                 }
             }
@@ -798,22 +816,23 @@ public class MyHashMap<K, V> extends AbstractMap<K, V>
     final void treeifyBin(Node<K, V>[] tab, int hash) {
         int n, index;
         Node<K, V> e;
-        if (tab == null || (n = tab.length) < MIN_TREEIFY_CAPACITY)
+        if (tab == null || (n = tab.length) < MIN_TREEIFY_CAPACITY) {
             resize();
-        else if ((e = tab[index = (n - 1) & hash]) != null) {
+        } else if ((e = tab[index = (n - 1) & hash]) != null) {
             TreeNode<K, V> hd = null, tl = null;
             do {
                 TreeNode<K, V> p = replacementTreeNode(e, null);
-                if (tl == null)
+                if (tl == null) {
                     hd = p;
-                else {
+                } else {
                     p.prev = tl;
                     tl.next = p;
                 }
                 tl = p;
             } while ((e = e.next) != null);
-            if ((tab[index] = hd) != null)
+            if ((tab[index] = hd) != null) {
                 hd.treeify(tab);
+            }
         }
     }
 
@@ -951,6 +970,7 @@ public class MyHashMap<K, V> extends AbstractMap<K, V>
      *
      * @return a set view of the keys contained in this map
      */
+    @Override
     public Set<K> keySet() {
         Set<K> ks = keySet;
         if (ks == null) {
@@ -2038,22 +2058,24 @@ public class MyHashMap<K, V> extends AbstractMap<K, V>
                     for (TreeNode<K, V> p = root; ; ) {
                         int dir, ph;
                         K pk = p.key;
-                        if ((ph = p.hash) > h)
+                        if ((ph = p.hash) > h) {
                             dir = -1;
-                        else if (ph < h)
+                        } else if (ph < h) {
                             dir = 1;
-                        else if ((kc == null &&
+                        } else if ((kc == null &&
                                 (kc = comparableClassFor(k)) == null) ||
-                                (dir = compareComparables(kc, k, pk)) == 0)
+                                (dir = compareComparables(kc, k, pk)) == 0) {
                             dir = tieBreakOrder(k, pk);
+                        }
 
                         TreeNode<K, V> xp = p;
                         if ((p = (dir <= 0) ? p.left : p.right) == null) {
                             x.parent = xp;
-                            if (dir <= 0)
+                            if (dir <= 0) {
                                 xp.left = x;
-                            else
+                            } else {
                                 xp.right = x;
+                            }
                             root = balanceInsertion(root, x);
                             break;
                         }
@@ -2261,38 +2283,43 @@ public class MyHashMap<K, V> extends AbstractMap<K, V>
                 next = (TreeNode<K, V>) e.next;
                 e.next = null;
                 if ((e.hash & bit) == 0) {
-                    if ((e.prev = loTail) == null)
+                    if ((e.prev = loTail) == null) {
                         loHead = e;
-                    else
+                    } else {
                         loTail.next = e;
+                    }
                     loTail = e;
                     ++lc;
                 } else {
-                    if ((e.prev = hiTail) == null)
+                    if ((e.prev = hiTail) == null) {
                         hiHead = e;
-                    else
+                    } else {
                         hiTail.next = e;
+                    }
                     hiTail = e;
                     ++hc;
                 }
             }
 
             if (loHead != null) {
-                if (lc <= UNTREEIFY_THRESHOLD)
+                if (lc <= UNTREEIFY_THRESHOLD) {
                     tab[index] = loHead.untreeify(map);
-                else {
+                } else {
                     tab[index] = loHead;
-                    if (hiHead != null) // (else is already treeified)
+                    // (else is already treeified)
+                    if (hiHead != null) {
                         loHead.treeify(tab);
+                    }
                 }
             }
             if (hiHead != null) {
-                if (hc <= UNTREEIFY_THRESHOLD)
+                if (hc <= UNTREEIFY_THRESHOLD) {
                     tab[index + bit] = hiHead.untreeify(map);
-                else {
+                } else {
                     tab[index + bit] = hiHead;
-                    if (loHead != null)
+                    if (loHead != null) {
                         hiHead.treeify(tab);
+                    }
                 }
             }
         }
